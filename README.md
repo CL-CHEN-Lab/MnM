@@ -1,6 +1,6 @@
 # MnM
 
-![MnM logo.](https://xfer.curie.fr/get/nil/DYswdDZesK2/MnM.logo.png)
+<img src="https://xfer.curie.fr/get/nil/DYswdDZesK2/MnM.logo.png" width="150" height="150" />
 
 MnM, a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement. MnM discovers replicating states and genomic heterogeneity in single-cells from whole-genome sequencing data.
 Requires ≥10 cells.
