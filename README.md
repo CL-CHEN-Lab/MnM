@@ -1,8 +1,10 @@
+[![MnM version](https://img.shields.io/badge/release-1.0.0-blue)](https://github.com/CL-CHEN-Lab/MnM/releases/latest)
+
 # MnM
 
 <img src="https://xfer.curie.fr/get/nil/DYswdDZesK2/MnM.logo.png" width="150" height="150" />
 
-MnM, a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement. MnM discovers replicating states and genomic heterogeneity in single-cells from whole-genome sequencing data.
+MnM, a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement from whole-genome sequencing data. It includes a single-cell copy-number imputation method, a replication state classifier and a subpopulation detector.
 Requires ≥10 cells.
 
 ## Usage
