@@ -1,0 +1,799 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# Author: Joseph JOSEPHIDES
+# Institut Curie, Paris
+# 09 Aug 2023
+
+version = str('1.0.0')
+
+# Load argparse for arguments
+import argparse
+
+# Arguments
+parser = argparse.ArgumentParser(description='MnM creates a single-cell copy-number matrix, discovers replicating states and genomic subpopulations.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-i','--inputfile', required=True, help='Tabulated bed-style file containing: chr, start, end, copy_number, Cell (with header, columns in any order). Gz compressed files are also accepted.')
+parser.add_argument('-m','--matrix', required=False, help='Flag if the input file is a matrix (columns: regions; rows: single-cells) and not a BED file. First column name: Cell, followed by columns named as chr:star-end. Gz compressed files are also accepted. This option is much slower.', action='store_true')
+parser.add_argument('--sep', help='Separator of the input file (comma, semicolon, tabulation, etc...).', default='\t')
+parser.add_argument('-o','--output', required=False, help='Output directory.', default='.')
+parser.add_argument('-n','--name', required=False, help='Name of the dataset.', default='dataset')
+parser.add_argument('-g','--genome', required=False, help='Name of the reference genome used or path of tabulated file with chromosome sizes.', default='hg38')
+parser.add_argument('-w','--windowsize', type=int, required=False, help='Window size to be used for binning in bp.', default='100000')
+parser.add_argument('--seed', type=int, required=False, help='Optional initialization seed for reproducibility.')
+parser.add_argument('--maxcells', type=int, required=False, help='Maximum number of cells to plot (randomly selected if there are more cells than the defined number).', default=50)
+parser.add_argument('-r','--ReplicatingStates', required=False, help='Flag whether MnM should report whether the cells are replicating (S-Phase).', action='store_true')
+parser.add_argument('-s','--subpopulations', required=False, help='Flag whether MnM should discover genomic subpopulations in the population of cells.', action='store_true')
+parser.add_argument('--cpu', type=int, required=False, help='Processing tasks to launch simultaneously.', default=0)
+parser.add_argument('--CNcol', required=False, help='Name of the copy-number column of input file (BAM-styled, not matrix) e.g. copy_number, CN, state, ...', default='copy_number')
+parser.add_argument('--Cellcol', required=False, help='Name of the Cell column of input file (BAM-styled, not matrix) e.g. Cell, cell, cell_id, ...', default='Cell')
+parser.add_argument('--groups', required=False, help='Optional file containing groups of cells comprised of 2 columns: cell name and group, without a header. For plotting purposes only.')
+parser.add_argument('-p','--ExtraPlots', required=False, help='Flag to generate extra general plots.', action='store_true')
+parser.add_argument('-b','--exportBED', required=False, help='Flag to export a BED file (1 per subpopulation).', action='store_true')
+
+parser.add_argument('-v','--version', action='version', version=('%(prog)s '+str(version)))
+
+args = parser.parse_args()
+
+# Load other libraries
+import pandas as pd
+import numpy as np
+import os
+from sklearn.impute import KNNImputer
+from natsort import natsorted, ns
+from datetime import datetime
+import seaborn as sns
+import matplotlib.pyplot as plt
+from pybedtools import BedTool
+import multiprocess as mp
+from functools import partial
+from tensorflow import keras
+from itertools import chain
+import umap.umap_ as umap
+from sklearn.cluster import DBSCAN
+import random
+from sklearn.neighbors import NearestNeighbors
+from collections import Counter
+from matplotlib.legend_handler import HandlerTuple
+
+
+# Define functions
+# Bin the bed file
+def binning_bed(cellname, bedfileDF, windows):
+    bedfile = bedfileDF[bedfileDF['Cell'] == cellname] # get mini bed (= of each Cell)
+    bedfile = BedTool.from_dataframe(bedfile).sort() # sort bed
+    mapped = BedTool.map(BedTool(), o='median', f=0.5, c=4, a=windows, b=bedfile, bed = True) # overlap CN with windows
+    mapped = BedTool.to_dataframe(mapped) # back to pandas dataframe
+    mapped['Cell'] = cellname # regive Cell column
+    return(mapped)
+
+# Convert matrix to BAM file
+def matrix_to_BAM(matrix):
+    columns_to_drop = ['Subpopulation', 'Phase']
+    matrix = matrix.drop(columns=columns_to_drop, axis=1, errors='ignore')
+    matrix.index.names = [args.Cellcol]
+    BED = matrix.stack().reset_index(name=args.CNcol).rename(columns={'level_1':'pos'})
+    BED[['chr', 'start']] = BED.pos.str.split(":", expand = True)
+    BED[['start', 'end']] = BED.start.str.split("-", expand = True)
+    BED = BED.rename(columns={args.Cellcol: "Cell", args.CNcol: "copy_number"})
+    BED = BED[['chr','start', 'end','copy_number','Cell']]
+    return(BED)
+
+# Import bed or matrix file
+def import_file(input_file, matrix, sep, CN_col, Cell_col):
+    if matrix == True:
+        print('Importing file as Matrix. . .')
+        BED = pd.read_csv(input_file, sep=sep, na_values='.', header=0, index_col = 0)
+        BED = matrix_to_BAM(BED)
+    else:
+        print('Importing BED file. . .')
+        BED = pd.read_csv(input_file, sep=sep, na_values='.', header=0)
+        BED = BED.rename(columns={args.Cellcol: "Cell", args.CNcol: "copy_number"})
+        BED = BED[['chr','start', 'end','copy_number','Cell']]
+    return(BED)
+
+# plot copy-numbers per chromosome per cell
+def plot_CN_per_chr_per_Cell(data, title, full_file_path):
+    # plot CN per chr per Cell
+    plt.rcParams['font.family'] = 'monospace'
+    data.columns = data.columns.str.rstrip('.bam')
+    plt.figure(figsize=(len(data.columns)/3.5, 10))
+    ax2 = sns.heatmap(data, annot=True, cmap="Spectral_r",
+                      cbar_kws={"ticks":range(9), 'shrink':0.5, 'extend':'max', 'pad':0.02, 'label':'Copy-Number'},
+                      vmin=0, vmax=8, linewidth=.5, square = True)
+    plt.xlabel('Cell')
+    plt.ylabel('Chromosome')
+    plt.title("Median copy-numbers of cells")
+    ax2.axes.set_title(title,fontsize=28)
+    plt.tight_layout()
+    plt.savefig(full_file_path, dpi=300, bbox_inches='tight')
+
+# Heatmap of clustered copy-numbers per chromosome per cell
+def hierarchically_clustering_heatmap(data, title, full_file_path):
+    metric = 'cityblock'
+    linkage_method = 'complete'
+    plt.rcParams['font.family'] = 'monospace'
+    data.columns = data.columns.str.rstrip('.bam')
+    ax = sns.clustermap(data, annot=True, cmap="Spectral_r", vmin=0, vmax=8, linewidth=.5,
+        figsize=(len(data.columns)/3.5, 10), metric = metric, method=linkage_method,
+        cbar_pos=None, dendrogram_ratio=(.03, .2), row_cluster = False)
+    ax.fig.suptitle(title)
+    plt.xlabel('Cell')
+    plt.ylabel('Chromosome')
+    plt.tight_layout()
+    plt.savefig(full_file_path, dpi=300, bbox_inches='tight')
+
+# Genome-wide copy-number heatmap
+def scCNV_Matrix_heatmap(data, title, full_file_path, subpops):
+    plt.rcParams['font.family'] = 'monospace'
+    if subpops == False:
+        fig = plt.figure(figsize=(56,len(data.index)/3.5))
+        data.index = data.index.str.rstrip('.bam')
+        ax = sns.heatmap(data.assign(sum=data.sum(axis=1)).sort_values(by='sum', ascending=True).iloc[:, :-1],
+            annot=False, cmap="Spectral_r", vmin=0, vmax=8, linewidth=0.0001, mask = False,
+            cbar_kws={"ticks":range(9), 'shrink':0.75, 'extend':'max','location':"left",'pad':0.02, 'label':'Copy-Number'})
+    else:
+        groups_df = {'Groups': subpops}
+        groups_df = pd.DataFrame(groups_df)
+        groups_df.index = data.index
+        data = pd.concat([data, groups_df], axis=1)
+        if len(data.index) > args.maxcells:
+            group_sizes = pd.Series(subpops).value_counts().sort_index()
+            total_size = group_sizes.sum()
+            weights = total_size / group_sizes
+            data = data.sample(n=args.maxcells, replace=False, axis=0, weights=groups_df['Groups'].map(weights))
+        # Calculate the sum of each row (excluding the 'Group' column)
+        data['RowSum'] = data.drop('Groups', axis=1).sum(axis=1)
+        # Reorder the rows based on the group number and the row sum
+        data = data.sort_values(['Groups', 'RowSum'])
+        # Drop the 'RowSum' column if no longer needed
+        df_sorted = data.drop('RowSum', axis=1)
+        # Create a sorted order of the groups, used later for the plot order
+        group_order = natsorted(np.unique(df_sorted.Groups))
+        # Plot
+        fig = plt.figure(figsize=(56,len(df_sorted.index)/3.5))
+        df_sorted.index = df_sorted.index.str.rstrip('.bam')
+        ax = sns.heatmap(df_sorted.drop('Groups', axis=1),
+            annot=False, cmap="Spectral_r", vmin=0, vmax=8, linewidth=0.0001, mask = False,
+            cbar_kws={"ticks":range(9), 'shrink':0.85, 'extend':'max','location':"left",'pad':0.02,'label':'Copy-Number'})
+        #extras
+        width_pad = 0.015
+        # Get unique groups and assign colors using a colorblind-friendly palette
+        colors = sns.color_palette('viridis', len(group_order))
+        # Create a color dictionary for the groups
+        group_colors = {group: color for group, color in zip(group_order, colors)}
+        # Get the group colors for each row
+        row_colors = [group_colors[group] for group in df_sorted['Groups'].tolist()]
+        # Add row colors to headmap
+        prev_color = None  # To keep track of the previous color
+        for i, (group, color) in enumerate(zip(df_sorted['Groups'].tolist(), row_colors)):
+            ax.hlines(i, 0, len(df_sorted.columns), colors='white', linewidth=0.5, linestyles='solid')
+            ax.add_patch(plt.Rectangle(xy=(-(width_pad+width_pad*0.10), i), width=width_pad, height=1, color=color, lw=0,
+                               transform=ax.get_yaxis_transform(), clip_on=False))
+            # Add horizontal lines between the colored groups
+            if color != prev_color:
+                if group != df_sorted['Groups'].tolist()[0]:
+                    ax.hlines(i, 0, len(df_sorted.columns), colors='black', linewidth=2, linestyles='solid')
+                # Add group name label in the middle of the color bar
+                ax.text(-width_pad*4000, i+1 , group, ha='right', va='center',rotation = 'horizontal', fontsize=25, fontweight='bold', color='white')
+            prev_color = color
+
+    ax.vlines(sep[1:], *ax.get_xlim(), linestyles='solid', colors='black',linewidth=3.0)
+    ax.set(xticks=(x_axis_labels))
+    ax.set(xticklabels = (chromosomes))
+    cbar = ax.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=25)
+    cbar.set_label('Copy-numbers', fontsize=30)
+    plt.ylabel('')
+    #plt.ylabel('Cell',fontsize=25)
+    plt.xlabel('Chromosome',fontsize=25)
+    #ax.axes.set_title(str(data_name + ' scCNV'),fontsize=40)
+    ax.axes.set_title(str(title),fontsize=40)
+    ax.tick_params(axis="x", labelsize=25, rotation=45)
+    ax.tick_params(axis="y", labelsize=17, rotation=0, right=True, labelright=True, labelleft=False, left=False)
+    plt.tight_layout()
+    plt.savefig(full_file_path, dpi=300, bbox_inches='tight')
+
+# UMAP plots
+def umap_groups (UMAP_dimensions, data_name, group_type_name, groups, full_file_path, shapes = False):
+        # Create a ListedColormap with a set number of colors for group1
+    num_colors_group1 = len(set(groups))
+    if groups == shapes:
+        cmap_group1 = plt.cm.get_cmap('cividis',num_colors_group1)
+    else:
+        cmap_group1 = plt.cm.get_cmap('Spectral',num_colors_group1)
+    groups = ['outliers' if value == 0 else value for value in groups]
+    if shapes == False:
+        shapes = groups
+
+    UMAP_dimensions['groups'] = groups
+    UMAP_dimensions['shapes'] = shapes
+    UMAP_dimensions['groups'] = UMAP_dimensions['groups'].astype(str)
+    UMAP_dimensions['shapes'] = UMAP_dimensions['shapes'].astype(str)
+    UMAP_dimensions.sort_values(by=['groups', 'shapes'], inplace=True, ignore_index=True)
+    groups = UMAP_dimensions.copy().groups.to_list()
+    shapes = UMAP_dimensions.copy().shapes.to_list()
+    shape_mapping = ['o','P','s','p','D','*','X','H','+','^','v','<','>',"1","2","3","4","8","|","_"]
+
+    # Create dictionaries to map groups to unique identifiers, colors, and shapes
+    markers_group2 = {group: idx for idx, group in enumerate(sorted(np.unique(shapes)))}
+    group1_to_id = {group: idx for idx, group in enumerate(sorted(np.unique(groups)))}
+
+    # Create the scatter plot
+    if groups != shapes:
+        fig, ax = plt.subplots(figsize=(5.15, 5), dpi=300)
+    else:
+        fig, ax = plt.subplots(figsize=(5, 5), dpi=300)
+
+    handles_group1 = {}
+    for i in range(len(UMAP_dimensions)):
+        group1 = groups[i]
+        group1_id = group1_to_id[group1]
+        color = cmap_group1(group1_id)
+        group2 = shapes[i]
+        group2_id = markers_group2[group2]
+        shape = shape_mapping[group2_id % len(shape_mapping)]
+        h = plt.scatter(UMAP_dimensions[0][i], UMAP_dimensions[1][i], color=color, marker=shape,
+                    alpha=.5, s=40, edgecolors='black', linewidth=0.3, label=None)
+        if group1 not in handles_group1:
+            handles_group1[group1] = h
+    plt.title('UMAP projection:\nCopy-Numbers from '+ data_name, fontsize=10)
+    plt.xlabel("UMAP1")
+    plt.ylabel("UMAP2")
+    # Create custom labels for colors
+    color_labels = sorted(np.unique(groups))
+    color_patches = [plt.Line2D([], [], color=cmap_group1(i / num_colors_group1), marker='o', linestyle='None', label=label) for i, label in enumerate(color_labels)]
+    # Create custom labels for shapes
+    shape_labels = sorted(np.unique(shapes))
+    # Combine the color and shape patches in the legend
+    if groups == shapes:
+        shape_patches = [plt.Line2D([], [], color=cmap_group1(i[0] / num_colors_group1), marker=shape, linestyle='None', label=label) for shape, label, i in zip(shape_mapping, shape_labels, enumerate(color_labels))]
+        legend_elements = shape_patches
+    else:
+        shape_patches = [plt.Line2D([], [], color='grey', marker=shape, linestyle='None', label=label) for shape, label in zip(shape_mapping, shape_labels)]
+        leg0 = plt.legend(title='Phase',handles=shape_patches, handler_map={tuple: HandlerTuple(ndivide=None)},loc='upper left', bbox_to_anchor=(1.025, 1))
+        legend_elements = color_patches
+
+    # Add the custom legend to the plot
+    leg = ax.legend(title=group_type_name,handles=legend_elements, handler_map={tuple: HandlerTuple(ndivide=None)})
+    plt.tight_layout()
+    for lh in leg.legendHandles:
+        lh.set_alpha(1)
+        lh.set_linewidth(.3)
+    if groups != shapes:
+        plt.gca().add_artist(leg0)
+        plt.savefig(full_file_path, dpi=300, bbox_inches='tight', bbox_extra_artists=[leg0])
+    else:
+        plt.savefig(full_file_path, dpi=300, bbox_inches='tight')
+
+if __name__ == "__main__":
+    print('\n   __  __       __  __  \n  |  \\/  |     |  \\/  | \n  | \\  / |_ __ | \\  / | \n  | |\\/| | \'_ \\| |\\/| | \n  | |  | | | | | |  | | \n  |_|  |_|_| |_|_|  |_| \n\n  v'+str(version)+'\n')
+
+    disclaimer = """
+---------------------------------------------------------------
+            EXPERIMENTAL PROGRAM - USE WITH CAUTION
+---------------------------------------------------------------
+This program is experimental, its results are not guaranteed to be accurate and it may produce unexpected outcomes. Please be cautious when using the program's output for critical decisions.
+If you encounter any issues or discrepancies, kindly report them to the developer for further investigation and improvement.
+Use this program at your own risk. By using this program, you acknowledge that its results are subject to change, you have read and you agree to the terms and conditions of the license.
+---------------------------------------------------------------
+    """
+
+    print(disclaimer)
+
+    START=datetime.now()
+
+    # Define variables
+    file_to_load = args.inputfile
+    output_dir = args.output
+    data_name = args.name
+    file_name = data_name+'_scMatrix'+'.tsv.gz'
+    file_path = output_dir+'/'+file_name
+    file_path = file_path.replace("//", "/")
+    Reference_genome = args.genome
+    window_size = args.windowsize
+    sep = args.sep
+
+    # Make directory if doesn't exist
+    os.makedirs(output_dir,exist_ok=True)
+
+    # Make windows from reference genome and sort
+    print('Binning the reference genome ('+Reference_genome+'). . .')
+    start=datetime.now()
+    if len (Reference_genome) > 5:
+        windows = BedTool.window_maker(BedTool(), g=Reference_genome, w=window_size)
+    else:
+        windows = BedTool.window_maker(BedTool(), genome=Reference_genome, w=window_size)
+    windows = windows.sort()
+    print(datetime.now()-start)
+
+    # Load BED File
+    start=datetime.now()
+    bedfileDF = import_file(file_to_load, args.matrix, sep, args.CNcol, args.Cellcol)
+    bedfileDF = bedfileDF.astype({"start":"int","end":"int"})
+    bedfile = BedTool.from_dataframe(bedfileDF).sort()
+    print(datetime.now()-start)
+
+    # Find unique Cell names
+    Cells = bedfileDF["Cell"].unique()
+
+    # Left join Windows + BED file copy-numbers by median when at least 30% overlaps the window, per Cell.
+    if args.cpu == 0:
+        cpucount = mp.cpu_count()
+    else:
+        cpucount = args.cpu
+
+    print('Binning BED file using '+str(cpucount)+' cores . . .')
+    start=datetime.now()
+    pool = mp.Pool(cpucount)
+    binning_bed_1=partial(binning_bed, bedfileDF=bedfileDF)
+    binning_bed_2=partial(binning_bed_1, windows=windows)
+
+    with mp.Pool() as pool:
+        results = pool.map(binning_bed_2, Cells)
+    CN_data = pd.concat(results)
+
+    # Merged data from all cells : replace for correct Nan values.
+    CN_data.rename(columns={"name": "CN"}, inplace = True)
+    CN_data.replace({'CN': "."}, np.nan, inplace = True)
+    print(datetime.now()-start)
+
+    # Create unique position column
+    CN_data["pos"] = (CN_data["chrom"] + ':' + CN_data["start"].astype('str') + '-' + CN_data["end"].astype('str'))
+    all_regions = CN_data["pos"]
+
+    # Set seed and prepare umap later
+    if args.seed is not None:
+        random.seed(args.seed)
+        reducer = umap.UMAP(n_components=2, random_state=args.seed)
+    else:
+        reducer = umap.UMAP(n_components=2)
+
+    # Convert data to matrix
+    print('Creating matrix. . .')
+    start=datetime.now()
+    CN_data["Cell"] = CN_data["Cell"].astype("category")
+    CN_data["pos"] = CN_data["pos"].astype("category")
+    CN_data = CN_data.pivot(index="Cell", columns="pos", values="CN")
+    CN_data = CN_data.dropna(axis=1, how='all')
+    print(datetime.now()-start)
+
+    # Imputation by region
+    total_elements = CN_data.size
+    missing_count = CN_data.isna().sum().sum()
+    missing_percentage = round((missing_count / total_elements) * 100, 2)
+    print( str(missing_count)+' missing values imputed ('+str(missing_percentage)+'%).')
+    start=datetime.now()
+    imputer = KNNImputer(n_neighbors=10, weights='distance', keep_empty_features=True)
+    CN_data = pd.DataFrame(imputer.fit_transform(CN_data),columns = CN_data.columns,index = CN_data.index)
+    CN_data = CN_data.round(0)
+    CN_data = CN_data.astype(int)
+    print(datetime.now()-start)
+
+    # Sort chromosomes
+    print('Sorting chromosomes alphanumerically.')
+    start=datetime.now()
+    sorted_pos = natsorted(list(CN_data.columns), alg=ns.IGNORECASE)
+    CN_data = CN_data[sorted_pos]
+    print(datetime.now()-start)
+
+    # Save matrix as a compressed tsv file.
+    print('Saving matrix: '+data_name+'.')
+    start=datetime.now()
+    CN_data.to_csv(str(file_path), sep='\t')
+    print(datetime.now()-start)
+
+    # Get group info
+    if args.groups != None:
+        groups_file = pd.read_csv(args.groups, sep=sep, index_col = 0, names=['cell','group'])
+        groups_file = groups_file.loc[CN_data.index]
+
+    # Transpose matrix
+    t_CN_data = CN_data.transpose()
+
+    # Calulcate median per chr per Cell
+    print('Calculating median copy-number per chromosome.')
+    start=datetime.now()
+    # get median CN per chr, per Cell and order chromosomes alphanumerically
+    index = t_CN_data.index
+    a_list = list(index)
+    index = np.char.split(a_list, sep =':')
+    index = np.delete(list(index), 1, 1)
+    index = [item for sublist in index for item in sublist]
+    CHR = index
+    t_CN_data.insert(0, 'chr', CHR )
+    t_CN_data = t_CN_data.groupby(["chr"]).median()
+    t_CN_data = t_CN_data.reindex(natsorted(list(t_CN_data.index), alg=ns.IGNORECASE))
+    print(datetime.now()-start)
+
+    # Find missing Regions
+    missing_regions = list(set(all_regions) - set(CN_data.columns))
+    filtered_regions=[]
+    condition_list= set(CHR)
+    condition_list= [item + ':' for item in condition_list]
+    condition_list= tuple(condition_list)
+    for m in missing_regions:
+        if m.startswith(condition_list):
+            filtered_regions.append(m)
+    # Add empty regions to a new dataframe with a copy-number=0
+    plot_dta = pd.concat([CN_data, pd.DataFrame(columns=filtered_regions)] , axis = 1)
+    sorted_pos = natsorted(list(plot_dta.columns), alg=ns.IGNORECASE)
+    plot_dta = plot_dta[sorted_pos]
+    plot_dta = plot_dta.fillna(0)
+
+    if len(CN_data.index) > args.maxcells:
+        print('Limiting the heatmap to '+str(args.maxcells)+' cells')
+        tmp_fig_dta_t = t_CN_data.copy(deep=True).sample(n=args.maxcells, replace=False, axis=1)
+        tmp_fig_dta = CN_data.copy(deep=True).sample(n=args.maxcells, replace=False, axis=0)
+        tmp_plot_dta = plot_dta.copy(deep=True).sample(n=args.maxcells, replace=False, axis=0)
+    else:
+        tmp_fig_dta_t = t_CN_data.copy(deep=True)
+        tmp_fig_dta = CN_data.copy(deep=True)
+        tmp_plot_dta = plot_dta.copy(deep=True)
+
+    # Find delimitations for chromosome axis (lines, chr name position) for heatmap
+    index_2 = plot_dta.columns
+    a_list = list(index_2)
+    index_2 = np.char.split(a_list, sep =':')
+    index_2 = np.delete(list(index_2), 1, 1)
+    index_2 = [item for sublist in index_2 for item in sublist]
+    #Get chromosome borders.
+    a = index_2[0]
+    chromosomes = [index_2[0]]
+    sep = [0]
+    x_axis_labels = []
+    for i in range(len(index_2)):
+        ind = index_2[i]
+        if a != ind:
+            x_axis_labels.append(int((i-sep[-1:][0])/2+sep[-1:][0]))
+            sep.append(i)
+            chromosomes.append(index_2[i])
+        a=index_2[i]
+    x_axis_labels.append(int((i-sep[-1:][0])/2+sep[-1:][0]))
+
+    # create general plots if requested
+    if args.ExtraPlots:
+        print('Creating figures.')
+        start=datetime.now()
+        # plot CN per chr per Cell
+        plot_CN_per_chr_per_Cell(tmp_fig_dta_t.copy(deep=True), str(data_name + ' Median copy-number heatmap'), str(output_dir+'/'+data_name+'_copy_number_heatmap.png'))
+        # Plot the CN matrix as a hierarchically-clustered heatmap
+        hierarchically_clustering_heatmap(tmp_fig_dta_t.copy(deep=True), str(data_name + ' Hierarchically-clustered copy-numbers'), str(output_dir+'/'+data_name+'_Hierarchically-clustered_copy_numbers.png') )
+        # Plot scCNV Matrix
+        scCNV_Matrix_heatmap(tmp_plot_dta.copy(deep=True), str(data_name + ' scCNV'), str(output_dir+'/'+data_name+'_scCNV_heatmap.png'), False)
+
+        if args.groups != None:
+            scCNV_Matrix_heatmap(plot_dta.loc[groups_file.index].copy(), str(data_name + ' scCNV groups'), str(output_dir+'/'+data_name+'_groups_scCNV_heatmap.png'), groups_file.copy().group.tolist())
+
+        print(datetime.now()-start)
+
+    del tmp_fig_dta_t
+    del tmp_fig_dta
+    del tmp_plot_dta
+
+    metadata_path = output_dir + '/' + data_name
+    metadata_path = metadata_path.replace("//", "/")
+
+    #Remove X and Y chromosomes for (a) discovering replication states and (b) discovering subpopulations
+    pattern = r'(X:|chrX:|chrY:|Y:)'
+    autosomal_data_bckup = CN_data[CN_data.columns.drop(list(CN_data.filter(regex=pattern)))]
+    metadata=pd.DataFrame([''])
+
+    # Detect replicating states of single-cells if genome is the genome and window size match the models available
+    if args.ReplicatingStates == True and Reference_genome == 'hg38' and (window_size == 500000 or window_size == 100000 or window_size == 25000):
+
+        print ('Detecting Replication States.')
+        start=datetime.now()
+
+        # Find columns that are needed for the model
+        current_directory = os.path.dirname(os.path.abspath(__file__))
+
+        # Load columns needed to be used
+        # Load model for replication state detection
+        if window_size == 500000:
+            cols_to_use = pd.read_csv(str(current_directory+'/data/Regions_for_phase_deep_learning_500kbModel20230809.txt'), header = None, index_col=False)[0].to_numpy()
+            replication_model = keras.models.load_model(str(current_directory+'/data/500kbModel20230809/'))
+        elif window_size == 100000:
+            cols_to_use = pd.read_csv(str(current_directory+'/data/Regions_for_phase_deep_learning_100kbModel20230809.txt'), header = None, index_col=False)[0].to_numpy()
+            replication_model = keras.models.load_model(str(current_directory+'/data/100kbModel20230809/'))
+        elif window_size == 25000:
+            cols_to_use = pd.read_csv(str(current_directory+'/data/Regions_for_phase_deep_learning_25kbModel20230809.txt'), header = None, index_col=False)[0].to_numpy()
+            replication_model = keras.models.load_model(str(current_directory+'/data/25kbModel20230809/'))
+
+        # Remove any unnecessary columns
+        autosomal_data = autosomal_data_bckup.copy().filter(items = list(cols_to_use), axis = 1)
+
+        # Discover missing regions and add NaNs
+        missing_regions = list(set(cols_to_use) - set(autosomal_data.columns))
+        autosomal_data = pd.concat([autosomal_data, pd.DataFrame(columns=missing_regions)] , axis = 1)
+        autosomal_data.fillna(np.nan, inplace=True)
+        print ('Linear interpolation of ' + str(len(missing_regions)) + ' missing regions . . .')
+
+        # Add missing values by a linear method
+        autosomal_data = autosomal_data.transpose()
+        autosomal_data = autosomal_data.reindex(natsorted(list(autosomal_data.index), alg=ns.IGNORECASE))
+        autosomal_data = autosomal_data.interpolate(method='linear', limit_direction='both').transpose()
+
+        # Predict replication states of cells
+        predictions = (replication_model.predict(autosomal_data) > 0.5).astype(int)
+        predictions = list(chain.from_iterable(predictions))
+        my_dict = {0: 'G1', 1: 'S'}
+        predictions = [my_dict[i] for i in predictions]
+
+        # Add replication states
+        pred_all_dta = autosomal_data_bckup.copy()
+        pred_all_dta.insert(0, 'Phase', predictions)
+
+        metadata=pd.DataFrame(pred_all_dta.Phase.value_counts(sort=False))
+        print(metadata)
+
+        print(datetime.now()-start)
+
+        scCNV_Matrix_heatmap(plot_dta.copy(), str(data_name + ' scCNV Replicating States'), str(output_dir+'/'+data_name+'_phases_scCNV_heatmap.png'), pred_all_dta.Phase.tolist())
+
+        dta = autosomal_data_bckup.copy()
+        embedding = reducer.fit_transform(dta)
+        umap_dta = pd.DataFrame(embedding)
+
+        umap_groups(umap_dta.copy(), data_name, 'Phase', pred_all_dta.copy().Phase.to_list(), str(output_dir+'/'+data_name+'_UMAP_phases.png'),  pred_all_dta.copy().Phase.to_list())
+
+        umap_dta_backup = umap_dta.copy()
+        umap_dta_backup.index = dta.copy().index
+
+        if args.groups != None:
+            umap_groups(umap_dta_backup.loc[dta.index].copy(), data_name, 'Group', groups_file.loc[dta.index].copy().group.tolist(), str(output_dir+'/'+data_name+'_UMAP_phases_groups.png'), pred_all_dta.loc[dta.index].copy().Phase.to_list())
+
+    elif args.ReplicatingStates == True and Reference_genome != 'hg38':
+        print ('Warning, the replication predictor is only available for hg38. Replication states will not be predicted.')
+    elif args.ReplicatingStates == True and (window_size != 500000 or window_size != 100000 or window_size != 25000):
+        print ('Warning, the replication predictor is only available 500, 100 and 25kb windows. Replication states will not be predicted.')
+
+    if args.subpopulations == True:
+        start=datetime.now()
+        print ('Detecting Subpopulations on autosomal data.')
+        print(datetime.now()-start)
+
+        if args.ReplicatingStates == True:
+            # Filter G1 cells
+            dta = pred_all_dta.copy()[pred_all_dta.Phase == "G1"]
+            dta = dta.drop(columns=['Phase'])
+
+        else:
+            dta = autosomal_data_bckup.copy()
+            print('WARNING: clusters could be from different replicating states. Using --ReplicatingStates is recommended.')
+
+        if args.seed is not None:
+            SEED = args.seed
+        else:
+            SEED = random.randint(3, 2**30)
+
+        SEEDS = [random.randint(1, 2**20),random.randint(1, 2**20),random.randint(1, 2**20),SEED,random.randint(1, 2**20),random.randint(1, 2**20),random.randint(1, 2**20)]
+        clusters = []
+        for seed in SEEDS:
+            reducer = umap.UMAP(n_components=2, random_state=seed)
+            dta.loc['_Artificial_cell_z'] = 1 # add an artificial haploid cell
+            dta.loc['_Artificial_cell_zz'] = 2 # add an artificial diploid cell
+            dta.loc['_Artificial_cell_zzz'] = 3 # add an artificial triploid cell
+            dta.loc['_Artificial_cell_zzzz'] = 4 # add an artificial tetraploid cell
+            dta.loc['_Artificial_cell_zzzzz'] = 5 # add an artificial pentaploid cell
+            embedding = reducer.fit_transform(dta)
+            embedding = embedding[:-5] # remove it
+            dta = dta.drop('_Artificial_cell_z') # remove it
+            dta = dta.drop('_Artificial_cell_zz') # remove it
+            dta = dta.drop('_Artificial_cell_zzz') # remove it
+            dta = dta.drop('_Artificial_cell_zzzz') # remove it
+            dta = dta.drop('_Artificial_cell_zzzzz') # remove it
+            umap_dta = pd.DataFrame(embedding)
+            epsilon = ( np.max(embedding[:, 0])-np.min(embedding[:, 0]) ) / ( np.max(embedding[:, 1])-np.min(embedding[:, 1]) ) * 1.25
+            epsilon = (1.25 if epsilon < 1.25 else epsilon)
+            epsilon = (2 if epsilon > 2 else epsilon)
+            minsamples = int(round(len(embedding)*.1, 0))
+            minsamples = (10 if minsamples < 10 else minsamples)
+            db = DBSCAN(eps=epsilon, min_samples=minsamples, n_jobs = cpucount).fit(embedding)
+            labels = db.labels_ + 1
+            n_clusters_ = max(labels)
+            clusters.append(n_clusters_)
+        frequency = Counter(clusters)
+        most_common_number, most_common_count = frequency.most_common(1)[0]
+        #print(f"The most frequent number is {most_common_number} with a count of {most_common_count}.")
+        if clusters[3] != most_common_number:
+            position = clusters.index(most_common_number)
+            print('Changing seed to '+str(SEED))
+            SEED = SEEDS[position]
+            random.seed(SEED)
+        reducer = umap.UMAP(n_components=2, random_state=SEED)
+        dta.loc['_Artificial_cell_z'] = 1 # add an artificial haploid cell
+        dta.loc['_Artificial_cell_zz'] = 2 # add an artificial diploid cell
+        dta.loc['_Artificial_cell_zzz'] = 3 # add an artificial triploid cell
+        dta.loc['_Artificial_cell_zzzz'] = 4 # add an artificial tetraploid cell
+        dta.loc['_Artificial_cell_zzzzz'] = 5 # add an artificial pentaploid cell
+        embedding = reducer.fit_transform(dta)
+        embedding = embedding[:-5] # remove it
+        dta = dta.drop('_Artificial_cell_z') # remove it
+        dta = dta.drop('_Artificial_cell_zz') # remove it
+        dta = dta.drop('_Artificial_cell_zzz') # remove it
+        dta = dta.drop('_Artificial_cell_zzzz') # remove it
+        dta = dta.drop('_Artificial_cell_zzzzz') # remove it
+        umap_dta = pd.DataFrame(embedding)
+
+        # DBSCAN to detect subpopulations from reduced dimension data
+        epsilon = ( np.max(embedding[:, 0])-np.min(embedding[:, 0]) ) / ( np.max(embedding[:, 1])-np.min(embedding[:, 1]) ) * 1.25
+        epsilon = (1.25 if epsilon < 1.25 else epsilon)
+        epsilon = (2 if epsilon > 2 else epsilon)
+        print('Using epsilon =',epsilon)
+        print('Minimum number of cells per subpopulation =',minsamples)
+        db = DBSCAN(eps=epsilon, min_samples=minsamples, n_jobs = cpucount).fit(embedding)
+        labels = db.labels_ + 1
+
+        dta['Subpopulation'] = labels.copy()
+        identity_threshold = .985
+        similar = True
+        while similar == True:
+            # Calculate the median value of each column for each group
+            group_medians = round(dta[dta.Subpopulation != 0].copy().groupby('Subpopulation').median())
+            group_medians_filtered = group_medians.loc[:, group_medians.max() < dta.median().median()*3]
+            # Calculate similarity between Subpopulation based on medians
+            group_similarity = pd.DataFrame(np.equal(group_medians_filtered.values[:, None, :], group_medians_filtered.values).mean(axis=2),
+                                        columns=group_medians_filtered.index, index=group_medians_filtered.index)
+            group_similarity = pd.DataFrame(np.triu(group_similarity, k=1), columns=group_similarity.columns, index=group_similarity.index)
+            # Merge similar Subpopulation together
+            similar_groups = group_similarity[group_similarity > identity_threshold]
+            similar_groups = similar_groups[similar_groups < 1]
+            group_mapping = {}
+            for col in group_similarity.columns:
+                max_similarity = group_similarity[col].drop(col).max()
+                if max_similarity > identity_threshold:
+                    similar_group = group_similarity[col][group_similarity[col] == max_similarity].index[0]
+                    group_mapping[similar_group] = col
+            dta['Subpopulation'] = dta['Subpopulation'].replace(group_mapping)
+            if similar_groups.isna().all().all() == True:
+                similar = False
+        # Rename group labels starting from 1
+        group_labels = dta['Subpopulation'].unique()
+        group_labels = [0] + sorted(group_labels[group_labels != 0])
+        dta['Subpopulation'] = dta['Subpopulation'].replace(dict(zip(group_labels, range(len(group_labels)))))
+        labels = dta.Subpopulation.tolist()
+
+        n_clusters_ = max(labels)
+        # PLOT UMAP with subpopulations
+        umap_groups (umap_dta.copy(), str(data_name), 'Subpopulation', dta.Subpopulation.to_list(), str(output_dir+'/'+data_name+'_UMAP_Subpopulations.png'))
+
+        dta = dta[(dta.Subpopulation != 0)]
+        dta.index = dta.index.astype(str)
+
+        scCNV_Matrix_heatmap((plot_dta.loc[dta.index]).copy(), str(data_name + ' scCNV Subpopulations'), str(output_dir+'/'+data_name+'_subpopulations_scCNV_heatmap.png'), dta.Subpopulation.tolist())
+
+        #Calculate median CN of each bin for each subpopulation
+        median_subpop_dta = CN_data.loc[dta.index].copy()
+        median_subpop_dta['Subpopulation']=dta.Subpopulation
+        median_subpop_dta = median_subpop_dta.groupby(["Subpopulation"]).median(numeric_only=True)
+        median_subpop_dta = median_subpop_dta.transpose()
+        index = median_subpop_dta.index
+        a_list = list(index)
+        index = np.char.split(a_list, sep =':')
+        index = np.delete(list(index), 1, 1)
+        index = [item for sublist in index for item in sublist]
+        CHR = index
+        median_subpop_dta.insert(0, 'chr', CHR )
+        median_subpop_dta = median_subpop_dta.groupby(["chr"]).median()
+        sorted_pos = natsorted(list(median_subpop_dta.index), alg=ns.IGNORECASE)
+        median_subpop_dta = median_subpop_dta.loc[sorted_pos]
+        plt.figure(figsize=(len(median_subpop_dta.columns), len(sorted_pos)/2.5), dpi=300)
+        ax = sns.heatmap(median_subpop_dta, annot=True, cmap="Spectral_r",
+                              cbar_kws={"ticks":range(9), 'shrink':0.5, 'extend':'max', 'pad':0.02, 'label':'Copy-Number'},
+                              vmin=0, vmax=8, linewidth=.5, square = True)
+        plt.xlabel('Subpopulation')
+        plt.ylabel('Chromosome')
+        plt.title("Median copy-numbers\nof subpopulations of\n"+data_name+" cells")
+        plt.savefig(str(output_dir+'/'+data_name+'_subpopulations_median_CNs.png'), dpi=300, bbox_inches="tight")
+
+        print('Discovered subpopulations:')
+
+        metadata=pd.DataFrame(dta[dta.Subpopulation != 0].Subpopulation.value_counts(sort=False))
+        print(metadata)
+
+        if args.ReplicatingStates == True:
+            if n_clusters_ > 1:
+                print ('Matching Replicating with non-replicating populations.')
+
+                S_df = CN_data.loc[(pred_all_dta[pred_all_dta.Phase == "S"]).index].copy()
+                G1_df = CN_data.loc[dta.index].copy()
+
+                G1_groups = dta.loc[G1_df.index].Subpopulation.copy()
+
+                tmp = pd.concat([S_df.copy(), G1_df.copy()])
+                tmp.loc['_Artificial_cell_z'] = 1 # add an artificial haploid cell
+                tmp.loc['_Artificial_cell_zz'] = 2 # add an artificial diploid cell
+                tmp.loc['_Artificial_cell_zzz'] = 3 # add an artificial triploid cell
+                tmp.loc['_Artificial_cell_zzzz'] = 4 # add an artificial tetraploid cell
+                tmp.loc['_Artificial_cell_zzzzz'] = 5 # add an artificial pentaploid cell
+                reducer_tmp = umap.UMAP(n_components=10, random_state=SEED)
+                embedding_bis = reducer_tmp.fit_transform(tmp)
+                embedding_bis = embedding_bis[:-5] # remove it
+                tmp = tmp.drop('_Artificial_cell_z') # remove it
+                tmp = tmp.drop('_Artificial_cell_zz') # remove it
+                tmp = tmp.drop('_Artificial_cell_zzz') # remove it
+                tmp = tmp.drop('_Artificial_cell_zzzz') # remove it
+                tmp = tmp.drop('_Artificial_cell_zzzzz') # remove it
+                umap_dta_bis = pd.DataFrame(embedding_bis)
+                umap_dta_bis.index = tmp.index
+                del tmp
+
+                S_df = umap_dta_bis.iloc[:len(S_df)].copy()
+                G1_df = umap_dta_bis.iloc[len(S_df):].copy()
+
+                # Nneighbours
+                nneigh = int(min(pd.value_counts(G1_groups))*.5)
+                nneigh = (5 if nneigh < 5 else nneigh)
+                nn_model = NearestNeighbors(n_neighbors=nneigh, n_jobs=cpucount, metric='euclidean')
+                nn_model.fit(G1_df)
+
+                # Find the nearest neighbor (G1 row) for each row in the S dataframe
+                distances, indices = nn_model.kneighbors(S_df)
+
+                # Assign the corresponding groups from the G1 dataframe to the S dataframe
+                S_df['Subpopulation'] = [Counter(G1_groups[indices[i]]).most_common(1)[0][0] for i in range(len(S_df))]
+
+                # Create a new column in the combined dataframe
+                combined_df = CN_data.copy()
+                combined_df['Subpopulation'] = ''
+
+                # Assign the groups from the G1 dataframe to the corresponding rows in the combined dataframe
+                combined_df.loc[dta.index, 'Subpopulation'] = dta['Subpopulation']
+                combined_df.loc[S_df.index, 'Subpopulation'] = S_df['Subpopulation']
+                combined_df['Phase']=pred_all_dta['Phase']
+                combined_df = combined_df[(combined_df.Subpopulation != 0)]
+                combined_df = combined_df[(combined_df.Subpopulation != '')]
+
+                umap_dta_backup = umap_dta_backup.loc[combined_df.index].copy()
+
+                umap_groups(umap_dta_backup.copy(), str(data_name), 'Subpopulation', combined_df.copy().Subpopulation.to_list(), str(output_dir+'/'+data_name+'_UMAP_Subpopulations_with_S_phase.png'), combined_df.copy().Phase.to_list())
+
+                if args.groups != None:
+                    groups_file = groups_file.loc[combined_df.index]
+                    umap_groups(umap_dta_backup.copy(), data_name, 'Group &\nSubpop.', (groups_file.astype(str).group+':'+combined_df.copy().astype(str).Subpopulation).tolist(), str(output_dir+'/'+data_name+'_UMAP_Group-Subpopulation_with_S_phase'), combined_df.copy().Phase.to_list())
+
+                metadata = pd.DataFrame(combined_df.copy()[combined_df.Subpopulation != 0][['Subpopulation','Phase']].value_counts(sort=False))
+                print(metadata)
+
+                for subpop in combined_df.Subpopulation.unique().tolist():
+                    subpop_plot_dta = combined_df[combined_df['Subpopulation'] == subpop].copy()
+                    scCNV_Matrix_heatmap(plot_dta.loc[subpop_plot_dta.index].copy(), str(data_name + ' scCNV Subpopulation '+str(subpop)+' Replicating States'),
+                                         str(output_dir+'/'+data_name+'_phases_scCNV_heatmap_Subpop_'+str(subpop)+'.png'), subpop_plot_dta.copy().Phase.tolist())
+
+                (combined_df[['Phase','Subpopulation']]).to_csv(str(metadata_path+ "_metadata.tsv"), sep='\t')
+            else:
+                print('Only 1 subpopulation.')
+                (pred_all_dta[['Phase']]).to_csv(str(metadata_path+ "_metadata.tsv"), sep='\t')
+        else:
+            (dta[['Subpopulation']]).to_csv(str(metadata_path+ "_metadata.tsv"), sep='\t')
+    if args.ReplicatingStates == True and args.subpopulations != True:
+        (pred_all_dta[['Phase']]).to_csv(str(metadata_path+ "_metadata.tsv"), sep='\t')
+
+    # Export BED file if requested
+    if args.exportBED == True:
+        print('Exporting BED file. . .')
+        start=datetime.now()
+        if args.subpopulations == True and n_clusters_ > 1:
+            subpops = combined_df['Subpopulation'].unique()
+            for subpop in subpops:
+                subpop_df = CN_data.loc[combined_df[combined_df['Subpopulation'] == subpop].index].copy()
+                bed_file_name = str(file_path.replace('scMatrix.tsv.gz', (str(subpop)+'.BED.gz')))
+                matrix_to_BAM(subpop_df).to_csv(bed_file_name, sep='\t', index=False)
+        else:
+            bed_file_name = str(file_path.replace('_scMatrix.tsv.gz', '.BED.gz'))
+            matrix_to_BAM(CN_data).to_csv(bed_file_name, sep='\t',index=False)
+        print(datetime.now()-start)
+
+    TOTALruntime = str(datetime.now()-START)
+
+    # Write metadata file
+    metadata.to_csv(str(metadata_path+ ".log"), sep='\t')
+    # Write log file
+    with open(str(metadata_path+ ".log"), 'a') as file:
+        file.write('\nParameters: ' + str(args))
+        file.write('\nTotal Cells: ' + str(len(Cells)))
+        file.write('\nMissing values imputed: '+str(missing_count)+' ('+str(missing_percentage)+'%)')
+        file.write('\nCPU units: ' + str(cpucount))
+        file.write('\nTotal Runtime: ' + str(TOTALruntime))
+        file.write('\nMnM v' + str(version))
+    print('Matrix and plots Created.\nTotal runtime: '+ TOTALruntime + ' for '+str(len(Cells))+' cells.\nDone & Exiting.')
