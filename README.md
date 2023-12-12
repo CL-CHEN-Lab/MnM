@@ -1,5 +1,5 @@
 [![MnM version](https://img.shields.io/badge/release-1.0.0-blue)](https://github.com/CL-CHEN-Lab/MnM/releases/latest)
-[![Python version](https://img.shields.io/badge/Python-3-yellow?logo=python)]
+![Python version](https://img.shields.io/badge/Python-3-yellow?logo=python)
 [![Chen Twitter](https://img.shields.io/badge/Share%20it-black?logo=X)](https://twitter.com/TeamChenCurie)
 
 
