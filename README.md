@@ -34,16 +34,20 @@ Where -i is the input file (scCNV matrix), -o the output directory, -m flags tha
 
 As a result the following figures are produced:
 
-* Distinction of replicating cells from non-replicating cells.
+* Distinction of replicating cells from non-replicating cells visualised on a genome-wide single-cell plot.
 <img src="https://xfer.curie.fr/get/nil/1qIlI8WRNx6/MCF-7_phases_scCNV_heatmap.png" />
 
-* Detection of subpopulations from non-replicating cells visualised:
- *  Genome-wide at the single-cell level.
-<img src="https://xfer.curie.fr/get/nil/hwtBDWumJWs/MCF-7_subpopulations_scCNV_heatmap.png" />
- * Chromosome-wide per subpopulation.
-<img src="https://xfer.curie.fr/get/nil/y01Cv4WrkQJ/MCF-7_UMAP_Subpopulations.png" />
- * On a UMAP plot.
-<img src="https://xfer.curie.fr/get/nil/YJgmnWjjkG5/MCF-7_subpopulations_median_CNs.png" />
+<ul>
+  <li>Detection of subpopulations from non-replicating cells visualised:</li>
+    <ul>
+      <li>Genome-wide at the single-cell level.</li>
+			<img src="https://xfer.curie.fr/get/nil/hwtBDWumJWs/MCF-7_subpopulations_scCNV_heatmap.png" />
+			<li>Chromosome-wide per subpopulation.</li>
+			<img src="https://xfer.curie.fr/get/nil/YJgmnWjjkG5/MCF-7_subpopulations_median_CNs.png" width="200" />
+			<li>On a UMAP plot.</li>
+			<img src="https://xfer.curie.fr/get/nil/y01Cv4WrkQJ/MCF-7_UMAP_Subpopulations.png" width="500" />
+		</ul>
+</ul>
 
 And a metadata file lists the replicating state and subpopulation of each cell in a metadata file:
 | Cell                             | Phase | Subpopulation |
@@ -96,17 +100,17 @@ If you use MnM please cite the following pre-print:
 
 Josephides, J. M., & Chen, C. L. (2023). MnM: a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement. bioRxiv, 2023-12.
 
->@article{josephides2023mnm,
->  title={MnM: a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement},
->  author={Josephides, Joseph M and Chen, Chun-Long},
->  journal={bioRxiv},
->  pages={2023--12},
->  year={2023},
->  elocation-id = {2023.12.26.573369},
->  publisher={Cold Spring Harbor Laboratory},
->  doi = {10.1101/2023.12.26.573369},
->  URL = {https://www.biorxiv.org/content/early/2023/12/28/2023.12.26.573369}
->}
+@article{josephides2023mnm,
+  title={MnM: a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement},
+  author={Josephides, Joseph M and Chen, Chun-Long},
+  journal={bioRxiv},
+  pages={2023--12},
+  year={2023},
+  elocation-id = {2023.12.26.573369},
+  publisher={Cold Spring Harbor Laboratory},
+  doi = {10.1101/2023.12.26.573369},
+  URL = {https://www.biorxiv.org/content/early/2023/12/28/2023.12.26.573369}
+}
 
 ## Contact
 
@@ -118,4 +122,4 @@ MnM v1.0.0
 
 Author: Joseph Josephides.
 Institut Curie, Paris.
-Last update: 09 Aug 2023.
+Latest software update: 09 Aug 2023.
