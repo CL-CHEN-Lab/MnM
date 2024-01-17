@@ -40,16 +40,16 @@ As a result the following figures are produced:
 <ul>
   <li>Detection of subpopulations from non-replicating cells visualised:</li>
     <ul>
-      <li>Genome-wide at the single-cell level.</li>
+	<li>Genome-wide at the single-cell level.</li>
 <img src="https://xfer.curie.fr/get/nil/hwtBDWumJWs/MCF-7_subpopulations_scCNV_heatmap.png" />
-			<li>Chromosome-wide per subpopulation.</li>
+	<li>Chromosome-wide per subpopulation.</li>
 <img src="https://xfer.curie.fr/get/nil/YJgmnWjjkG5/MCF-7_subpopulations_median_CNs.png" width="200" />
-			<li>On a UMAP plot.</li>
+	<li>On a UMAP plot.</li>
 <img src="https://xfer.curie.fr/get/nil/y01Cv4WrkQJ/MCF-7_UMAP_Subpopulations.png" width="500" />
-		</ul>
+	</ul>
 </ul>
 
-And a metadata file lists the replicating state and subpopulation of each cell in a metadata file:
+And a metadata file lists the replication state and subpopulation of each cell:
 | Cell                             | Phase | Subpopulation |
 |----------------------------------|-------|---------------|
 | AAACCTGCAACCCAAT-1_First_exp.bam | G1    | 1             |
@@ -98,7 +98,7 @@ pip install umap==0.5.3
 
 If you use MnM please cite the following preprint:
 
-Josephides, J.M. and Chen, C.-L. (2023) MNM: A machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement [Preprint]. doi:10.1101/2023.12.26.573369.
+Josephides, J.M. and Chen, C.-L. (2023) MNM: A machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement [Preprint]. doi:[10.1101/2023.12.26.573369](https://doi.org/10.1101/2023.12.26.573369).
 
 ## Contact
 
