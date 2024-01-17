@@ -41,11 +41,11 @@ As a result the following figures are produced:
   <li>Detection of subpopulations from non-replicating cells visualised:</li>
     <ul>
       <li>Genome-wide at the single-cell level.</li>
-			<img src="https://xfer.curie.fr/get/nil/hwtBDWumJWs/MCF-7_subpopulations_scCNV_heatmap.png" />
+<img src="https://xfer.curie.fr/get/nil/hwtBDWumJWs/MCF-7_subpopulations_scCNV_heatmap.png" />
 			<li>Chromosome-wide per subpopulation.</li>
-			<img src="https://xfer.curie.fr/get/nil/YJgmnWjjkG5/MCF-7_subpopulations_median_CNs.png" width="200" />
+<img src="https://xfer.curie.fr/get/nil/YJgmnWjjkG5/MCF-7_subpopulations_median_CNs.png" width="200" />
 			<li>On a UMAP plot.</li>
-			<img src="https://xfer.curie.fr/get/nil/y01Cv4WrkQJ/MCF-7_UMAP_Subpopulations.png" width="500" />
+<img src="https://xfer.curie.fr/get/nil/y01Cv4WrkQJ/MCF-7_UMAP_Subpopulations.png" width="500" />
 		</ul>
 </ul>
 
@@ -96,21 +96,9 @@ pip install umap==0.5.3
 ```
 ## Citation
 
-If you use MnM please cite the following pre-print:
+If you use MnM please cite the following preprint:
 
-Josephides, J. M., & Chen, C. L. (2023). MnM: a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement. bioRxiv, 2023-12.
-
-@article{josephides2023mnm,
-  title={MnM: a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement},
-  author={Josephides, Joseph M and Chen, Chun-Long},
-  journal={bioRxiv},
-  pages={2023--12},
-  year={2023},
-  elocation-id = {2023.12.26.573369},
-  publisher={Cold Spring Harbor Laboratory},
-  doi = {10.1101/2023.12.26.573369},
-  URL = {https://www.biorxiv.org/content/early/2023/12/28/2023.12.26.573369}
-}
+Josephides, J.M. and Chen, C.-L. (2023) MNM: A machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement [Preprint]. doi:10.1101/2023.12.26.573369.
 
 ## Contact
 
