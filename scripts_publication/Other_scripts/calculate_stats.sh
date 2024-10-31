@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# calculate_stats.sh
 # chmod +x calculate_stats.sh
-# sh ~/OneDrive\ -\ INSTITUT\ CURIE/Scripts/scCNV/calculate_stats.sh
 
 # Check if the directory path argument is provided
 if [ -z "$1" ]; then
