@@ -52,7 +52,7 @@ sh calculate_stats.sh > Metadata/MK_read_stats.csv
 cd Massey2022/Kronos
 echo "Cell\tPhase" > ./Metadata/GM12878_ALL_Cell_Phases.tsv
 cat CNV/*-G1*.csv | awk -F',' 'OFS="\t" {print $1,"G1"}' | sort | tail -n+6 >> ./Metadata/GM12878_ALL_Cell_Phases.tsv
-cat CNV/*-G2*.csv | awk -F',' 'OFS="\t" {print $1,"G1"}' | sort | tail -n+6 >> ./Metadata/GM12878_ALL_Cell_Phases.tsv #G1 or G2? what did I use?
+cat CNV/*-G2*.csv | awk -F',' 'OFS="\t" {print $1,"G1"}' | sort | tail -n+6 >> ./Metadata/GM12878_ALL_Cell_Phases.tsv
 cat CNV/*-S_*.csv | awk -F',' 'OFS="\t" {print $1,"S"}' | sort | tail -n+6 >> ./Metadata/GM12878_ALL_Cell_Phases.tsv
 cat CNV/*-lateS_*.csv | awk -F',' 'OFS="\t" {print $1,"S"}' | sort | tail -n+6 >> ./Metadata/GM12878_ALL_Cell_Phases.tsv
 cat CNV/*-earlyS_*.csv | awk -F',' 'OFS="\t" {print $1,"S"}' | sort | tail -n+6 >> ./Metadata/GM12878_ALL_Cell_Phases.tsv
