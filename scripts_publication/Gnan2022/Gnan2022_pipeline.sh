@@ -99,13 +99,19 @@ Kronos WhoIsWho -F CNV/20kb_2023/JEFF_2_per_Cell_summary_metrics.csv -o diagnost
 Kronos WhoIsWho -F CNV/20kb_2023/MCF7_unsorted_per_Cell_summary_metrics.csv -o diagnostic/Whoiswho -W MnM/MCF7/MCF-7_metadata.tsv
 Kronos WhoIsWho -F CNV/20kb_2023/MCF7_Normal_per_Cell_summary_metrics.csv -o diagnostic/Whoiswho -W MnM/MCF7/MCF-7_metadata.tsv
 
+# Split subpopulations of MCF7 cells
+head -n1 diagnostic/Whoiswho/phased_MCF7_unsorted_per_Cell_summary_metrics.csv > diagnostic/Whoiswho/phased_MCF7_S1_per_Cell_summary_metrics.csv
+cat diagnostic/Whoiswho/phased_MCF7_unsorted_per_Cell_summary_metrics.csv diagnostic/Whoiswho/phased_MCF7_Normal_per_Cell_summary_metrics.csv | awk -F',' '{if ($8 == "1") {print $0} }' >> diagnostic/Whoiswho/phased_MCF7_S1_per_Cell_summary_metrics.csv
+head -n1 diagnostic/Whoiswho/phased_MCF7_unsorted_per_Cell_summary_metrics.csv > diagnostic/Whoiswho/phased_MCF7_S2_per_Cell_summary_metrics.csv
+cat diagnostic/Whoiswho/phased_MCF7_unsorted_per_Cell_summary_metrics.csv diagnostic/Whoiswho/phased_MCF7_Normal_per_Cell_summary_metrics.csv | awk -F',' '{if ($8 == "2") {print $0} }' >> diagnostic/Whoiswho/phased_MCF7_S2_per_Cell_summary_metrics.csv
+
 # Diagnostic for Kronos
 Kronos diagnostic -F diagnostic/Whoiswho/phased_HeLa_1_per_Cell_summary_metrics.csv -o diagnostic -b HeLa_1 -m 115 -c 3 -C
 Kronos diagnostic -F diagnostic/Whoiswho/phased_HeLa_2_per_Cell_summary_metrics.csv -o diagnostic -b HeLa_2 -m 115 -c 3 -C
 Kronos diagnostic -F diagnostic/Whoiswho/phased_JEFF_1_per_Cell_summary_metrics.csv -o diagnostic -b JEFF_1 -m 115 -c 3 -C
 Kronos diagnostic -F diagnostic/Whoiswho/phased_JEFF_2_per_Cell_summary_metrics.csv -o diagnostic -b JEFF_2 -m 115 -c 3 -C
-Kronos diagnostic -F diagnostic/Whoiswho/phased_MCF7_unsorted_per_Cell_summary_metrics.csv -o diagnostic -b MCF7_unsorted -m 115 -c 3 -C
-Kronos diagnostic -F diagnostic/Whoiswho/phased_MCF7_Normal_per_Cell_summary_metrics.csv -o diagnostic -b MCF7_Normal -m 115 -c 3 -C
+Kronos diagnostic -F diagnostic/Whoiswho/phased_MCF7_S1_per_Cell_summary_metrics.csv -o diagnostic -b MCF7_1 -m 115 -c 3 -C
+Kronos diagnostic -F diagnostic/Whoiswho/phased_MCF7_S2_per_Cell_summary_metrics.csv -o diagnostic -b MCF7_2 -m 115 -c 3 -C
 
 ######################
 # Replication Timing # RT from Kronos
