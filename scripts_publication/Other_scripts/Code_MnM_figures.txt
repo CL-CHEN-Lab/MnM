@@ -1,0 +1,57 @@
+Figure 2:
+Lines 96-100: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Du2021/Du2021_Kronos_MnM_pipeline.sh
+Line 113: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Massey2022/Massey2022_Kronos_MnM_pipeline.sh
+
+Figure 3:
+Line 86: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Gnan2022/Gnan2022_pipeline.sh
+Line 83: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Du2021/Du2021_Kronos_MnM_pipeline.sh
+
+Figure 4:
+- Figure 4 a-b:
+Line 113: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Gnan2022/Gnan2022_pipeline.sh
+- Figure 4 c-d:
+Line 83: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Du2021/Du2021_Kronos_MnM_pipeline.sh
+- Figure 4 e,g:
+Lines 132-155: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Du2021/Du2021_Kronos_MnM_pipeline.sh
+- Figure 4 f,h:
+Lines 170-189: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Gnan2022/Gnan2022_pipeline.sh
+
+Figure 5:
+- Figure 5 a-b:
+Lines 77-81: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Laks2019/Laks2019_Kronos_MnM_pipeline.sh
+- Figure 5 c-d:
+Lines 122-147: https://github.com/CL-CHEN-Lab/MnM/blob/main/scripts_publication/Laks2019/Laks2019_Kronos_MnM_pipeline.sh
+
+Figure 6:
+- Figure 6:
+Kronos Corr -F $(ls *tsv | tr '\n' ',' | sed 's/,$//') -o Cor
+
+Figure 7:
+- Figure 7 a,c:
+Kronos DRed -C Gnan2022_HeLa_200kb_single_cells_CNV_200Kb.tsv,\
+Gnan2022_JEFF_200kb_single_cells_CNV_200Kb.tsv,\
+Gnan2022_MCF-7_Normal_Unsorted_200kb_single_cells_CNV_200Kb_S1.tsv,\
+Gnan2022_MCF-7_Normal_Unsorted_200kb_single_cells_CNV_200Kb_S2.tsv,\
+Du2021_WT_200kb_single_cells_CNV_200Kb_S1.tsv,\
+Du2021_WT_200kb_single_cells_CNV_200Kb_S2.tsv,\
+Laks2019_HeLa_SA1087_200kb_single_cells_CNV_200Kb.tsv,\
+MasseyKoren2022_GM12891_200kb_single_cells_CNV_200Kb.tsv,\
+MasseyKoren2022_GM12892_200kb_single_cells_CNV_200Kb.tsv,\
+Laks2019_T-47D_SA1044_200kb_single_cells_CNV_200Kb_S1.tsv \
+-o Multi_Cell_lines \
+-f Multi_Cell_lines_RT \
+-U -P --CNV_values B \
+-c $cores \
+-s 18671107
+
+- Figure 7 b,d:
+Kronos DRed -C $(ls | grep -e PDX -e ERpos -e 47D -e FNA | tr '\n' ',' | sed 's/,$//'),\
+Gnan2022_MCF-7_Normal_Unsorted_200kb_single_cells_CNV_200Kb_S1.tsv,\
+Gnan2022_MCF-7_Normal_Unsorted_200kb_single_cells_CNV_200Kb_S2.tsv,\
+Gnan2022_HeLa_200kb_single_cells_CNV_200Kb.tsv,\
+Gnan2022_JEFF_200kb_single_cells_CNV_200Kb.tsv \
+-o Breast_Cancer_and_cell_lines \
+-f Breast_Cancer_and_cell_lines_RT \
+-U -P --CNV_values B \
+-c $cores \
+-s 18671107
