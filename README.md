@@ -1,11 +1,11 @@
-[![MnM version](https://img.shields.io/badge/release-1.0.0-blue)](https://github.com/CL-CHEN-Lab/MnM/releases/latest)
+[![MnM version](https://img.shields.io/badge/release-1.0.1-blue)](https://github.com/CL-CHEN-Lab/MnM/releases/latest)
 ![Python version](https://img.shields.io/badge/Python-3-yellow?logo=python)
 [![Chen Twitter](https://img.shields.io/badge/Share%20it-black?logo=X)](https://twitter.com/TeamChenCurie)
 
 
 # MnM
 
-<img src="https://xfer.curie.fr/get/nil/DYswdDZesK2/MnM.logo.png" width="150" height="150" />
+<img src="https://raw.githubusercontent.com/josephides/MnM_image_repository/refs/heads/main/MnM_logo.png" width="150" height="150" />
 
 MnM, a machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement from whole-genome sequencing data. It includes a single-cell copy-number imputation method, a replication state classifier and a subpopulation detector.
 Requires ≥10 cells.
@@ -35,17 +35,17 @@ Where -i is the input file (scCNV matrix), -o the output directory, -m flags tha
 As a result the following figures are produced:
 
 * Distinction of replicating cells from non-replicating cells visualised on a genome-wide single-cell plot.
-<img src="https://xfer.curie.fr/get/nil/1qIlI8WRNx6/MCF-7_phases_scCNV_heatmap.png" />
+<img src="https://raw.githubusercontent.com/josephides/MnM_image_repository/refs/heads/main/68747470733a2f2f786665722e63757269652e66722f6765742f6e696c2f3171496c493857524e78362f4d43462d375f7068617365735f7363434e565f686561746d61702e706e67.png" />
 
 <ul>
   <li>Detection of subpopulations from non-replicating cells visualised:</li>
     <ul>
 	<li>Genome-wide at the single-cell level.</li>
-<img src="https://xfer.curie.fr/get/nil/hwtBDWumJWs/MCF-7_subpopulations_scCNV_heatmap.png" />
+<img src="https://raw.githubusercontent.com/josephides/MnM_image_repository/refs/heads/main/68747470733a2f2f786665722e63757269652e66722f6765742f6e696c2f687774424457756d4a57732f4d43462d375f737562706f70756c6174696f6e735f7363434e565f686561746d61702e706e67.png" />
 	<li>Chromosome-wide per subpopulation.</li>
-<img src="https://xfer.curie.fr/get/nil/YJgmnWjjkG5/MCF-7_subpopulations_median_CNs.png" width="200" />
+<img src="https://raw.githubusercontent.com/josephides/MnM_image_repository/refs/heads/main/68747470733a2f2f786665722e63757269652e66722f6765742f6e696c2f594a676d6e576a6a6b47352f4d43462d375f737562706f70756c6174696f6e735f6d656469616e5f434e732e706e67.png" width="200" />
 	<li>On a UMAP plot.</li>
-<img src="https://xfer.curie.fr/get/nil/y01Cv4WrkQJ/MCF-7_UMAP_Subpopulations.png" width="500" />
+<img src="https://raw.githubusercontent.com/josephides/MnM_image_repository/refs/heads/main/68747470733a2f2f786665722e63757269652e66722f6765742f6e696c2f79303143763457726b514a2f4d43462d375f554d41505f537562706f70756c6174696f6e732e706e67.png" width="500" />
 	</ul>
 </ul>
 
@@ -96,18 +96,17 @@ pip install umap==0.5.3
 ```
 ## Citation
 
-If you use MnM please cite the following preprint:
+If you use MnM please cite our publication:
 
-Josephides, J.M. and Chen, C.-L. (2023) MNM: A machine learning approach to detect replication states and genomic subpopulations for single-cell DNA replication timing disentanglement [Preprint]. doi:[10.1101/2023.12.26.573369](https://doi.org/10.1101/2023.12.26.573369).
+Josephides, J.M., Chen, CL. Unravelling single-cell DNA replication timing dynamics using machine learning reveals heterogeneity in cancer progression. Nat Commun 16, 1472 (2025). [https://doi.org/10.1038/s41467-025-56783-0](https://doi.org/10.1038/s41467-025-56783-0).
 
 ## Contact
 
-For inquiries and authorization requests, please contact [joseph.josephides@curie.fr](mailto:joseph.josephides@curie.fr) and [chunlong.chen@curie.fr](mailto:chunlong.chen@curie.fr).
+For inquiries and authorization requests, please contact [chunlong.chen@curie.fr](mailto:chunlong.chen@curie.fr).
 
 ## MnM releases
 
-MnM v1.0.0
+MnM v1.0.1
 
 Author: Joseph Josephides.
 Institut Curie, Paris.
-Latest software update: 09 Aug 2023.
